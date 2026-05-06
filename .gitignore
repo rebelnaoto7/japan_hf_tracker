@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# 環境変数（秘密情報）
+.env
+.streamlit/secrets.toml
+
+# データベース・キャッシュ（全DBファイル）
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+data/*.db
+data/*.db-*
+
+# IDE
+.vscode/
+.idea/
+tempCodeRunnerFile.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# ログ
+*.log
+
+# Edgar/EDINETキャッシュ
+.edgar_cache/
+edinet_cache/
+
+# 一時ファイル
+*.tmp
+*~
