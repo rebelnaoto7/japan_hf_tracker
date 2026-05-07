@@ -158,4 +158,4 @@ st.caption(
     "Source: SEC EDGAR 13F-HR | "
     "Note: 13Fはロング側のみで、ショート/スワップ/海外株は含まれません | "
     "45日ラグあり"
-)streamlit run app.py
+)
