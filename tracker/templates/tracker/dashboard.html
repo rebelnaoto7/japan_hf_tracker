@@ -1,0 +1,265 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>📊 Japan HF Ownership Tracker</title>
+
+  <!-- Chart.js: CDN first, fall back to a local copy for restricted networks.
+       To vendor locally: download chart.umd.min.js into
+       tracker/static/tracker/js/ and the onerror handler will load it. -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"
+          onerror="this.onerror=null;this.src='{% static 'tracker/js/chart.umd.min.js' %}'"></script>
+
+  <style>
+    :root{
+      --bg:#1e1e2e; --panel:#282838; --card:#2f2f42; --line:#3a3a4a;
+      --txt:#e6e6f0; --muted:#a6adc8; --accent:#89b4fa; --green:#a6e3a1;
+      --red:#f38ba8; --yellow:#f9e2af;
+    }
+    *{box-sizing:border-box;}
+    body{
+      margin:0; background:var(--bg); color:var(--txt);
+      font-family:"Meiryo UI","Segoe UI",Meiryo,sans-serif; font-size:14px;
+    }
+    a{color:var(--accent);}
+    .layout{display:flex; min-height:100vh;}
+    /* ---------- sidebar ---------- */
+    .sidebar{
+      width:280px; flex:0 0 280px; background:var(--panel);
+      border-right:1px solid var(--line); padding:20px; position:sticky; top:0;
+      height:100vh; overflow-y:auto;
+    }
+    .sidebar h2{font-size:16px; margin:0 0 16px;}
+    .field{margin-bottom:16px;}
+    .field label{display:block; font-size:12px; color:var(--muted); margin-bottom:6px;}
+    select, input[type=range]{width:100%;}
+    select{
+      background:var(--card); color:var(--txt); border:1px solid var(--line);
+      border-radius:8px; padding:8px;
+    }
+    .range-row{display:flex; align-items:center; gap:10px;}
+    .range-row output{min-width:28px; text-align:right; color:var(--accent); font-weight:600;}
+    .mini-metric{border-top:1px solid var(--line); padding-top:12px; margin-top:12px;}
+    .mini-metric .k{font-size:11px; color:var(--muted);}
+    .mini-metric .v{font-size:16px; font-weight:600;}
+    /* ---------- main ---------- */
+    .main{flex:1; padding:24px 32px; max-width:1200px;}
+    h1{font-size:24px; margin:0 0 4px;}
+    .caption{color:var(--muted); margin:0 0 20px;}
+    .kpis{display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:8px;}
+    .kpi{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px;}
+    .kpi .k{font-size:12px; color:var(--muted);}
+    .kpi .v{font-size:28px; font-weight:700; margin-top:4px;}
+    hr.div{border:none; border-top:1px solid var(--line); margin:20px 0;}
+    /* ---------- tabs ---------- */
+    .tabbar{display:flex; gap:6px; border-bottom:1px solid var(--line); margin-bottom:18px;}
+    .tabbtn{
+      background:none; border:none; color:var(--muted); padding:10px 16px;
+      cursor:pointer; font-size:14px; border-bottom:2px solid transparent;
+      font-family:inherit;
+    }
+    .tabbtn.active{color:var(--txt); border-bottom-color:var(--accent);}
+    .tabpane{display:none;}
+    .tabpane.active{display:block;}
+    /* ---------- tables ---------- */
+    table{width:100%; border-collapse:collapse; font-size:13px;}
+    th,td{padding:8px 10px; text-align:left; border-bottom:1px solid var(--line);}
+    th{color:var(--muted); font-weight:600;}
+    td.num,th.num{text-align:right; font-variant-numeric:tabular-nums;}
+    .chart-wrap{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-top:16px;}
+    .btn{
+      display:inline-block; background:var(--accent); color:#1e1e2e; text-decoration:none;
+      padding:8px 14px; border-radius:8px; font-weight:600; margin-top:14px;
+    }
+    footer{color:var(--muted); font-size:12px; margin-top:28px;}
+    .empty{padding:40px; text-align:center; color:var(--red);}
+    @media(max-width:860px){
+      .layout{flex-direction:column;}
+      .sidebar{width:100%; height:auto; position:static;}
+      .kpis{grid-template-columns:1fr;}
+    }
+  </style>
+</head>
+<body>
+{% if no_data %}
+  <div class="empty">
+    <h1>📊 Japan Hedge Fund Ownership Tracker</h1>
+    <p>データがありません。先に <code>python manage.py seed_demo</code>
+       （またはお手持ちの cache.db を <code>python manage.py import_cache</code>）を実行してください。</p>
+  </div>
+{% else %}
+<div class="layout">
+  <!-- ===================== SIDEBAR (filters) ===================== -->
+  <aside class="sidebar">
+    <h2>🔎 フィルタ</h2>
+    <form method="get" id="filterForm">
+      <div class="field">
+        <label for="fund">ヘッジファンド</label>
+        <select name="fund" id="fund" onchange="document.getElementById('filterForm').submit()">
+          {% for f in funds %}
+            <option value="{{ f }}" {% if f == selected_fund %}selected{% endif %}>{{ f }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="q">四半期</label>
+        <select name="q" id="q" onchange="document.getElementById('filterForm').submit()">
+          {% for qd in quarters %}
+            <option value="{{ qd }}" {% if qd == selected_q %}selected{% endif %}>{{ qd }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="top_n">Top N 表示</label>
+        <div class="range-row">
+          <input type="range" name="top_n" id="top_n" min="5" max="30" step="1"
+                 value="{{ top_n }}"
+                 oninput="document.getElementById('topNOut').value=this.value"
+                 onchange="document.getElementById('filterForm').submit()">
+          <output id="topNOut">{{ top_n }}</output>
+        </div>
+      </div>
+    </form>
+
+    <div class="mini-metric"><div class="k">登録ファンド数</div><div class="v">{{ n_funds }}</div></div>
+    <div class="mini-metric"><div class="k">総レコード数</div><div class="v">{{ n_records }}</div></div>
+    <div class="mini-metric"><div class="k">カバー期間</div>
+      <div class="v" style="font-size:13px;">{{ period_min }} ~ {{ period_max }}</div>
+    </div>
+  </aside>
+
+  <!-- ===================== MAIN ===================== -->
+  <main class="main">
+    <h1>📊 Japan Hedge Fund Ownership Tracker</h1>
+    <p class="caption">SEC 13F-HR データを横断的に可視化するMVP。EDINET連携・日本ADR抽出は次フェーズで実装予定。</p>
+
+    <div class="kpis">
+      <div class="kpi"><div class="k">ポートフォリオ総額</div><div class="v">${{ total_value_b }}B</div></div>
+      <div class="kpi"><div class="k">保有銘柄数</div><div class="v">{{ n_holdings }}</div></div>
+      <div class="kpi"><div class="k">Top 10集中度</div><div class="v">{{ top10_concentration }}%</div></div>
+    </div>
+
+    <hr class="div">
+
+    <div class="tabbar">
+      <button class="tabbtn active" data-tab="t1">📋 Top N</button>
+      <button class="tabbtn" data-tab="t2">📈 推移</button>
+      <button class="tabbtn" data-tab="t3">🔍 全銘柄</button>
+    </div>
+
+    <!-- Tab 1 -->
+    <section class="tabpane active" id="t1">
+      <h3>Top {{ top_n }} Holdings @ {{ selected_q }}</h3>
+      <table>
+        <thead><tr><th>Ticker</th><th>Issuer</th><th class="num">Value ($B)</th><th class="num">% of Port</th></tr></thead>
+        <tbody>
+          {% for r in top_table %}
+            <tr><td>{{ r.ticker }}</td><td>{{ r.issuer }}</td><td class="num">{{ r.value_b }}</td><td class="num">{{ r.pct }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="chart-wrap"><canvas id="pieChart" height="120"></canvas></div>
+    </section>
+
+    <!-- Tab 2 -->
+    <section class="tabpane" id="t2">
+      <h3>Top 5銘柄の四半期推移</h3>
+      <div class="chart-wrap"><canvas id="lineChart" height="110"></canvas></div>
+      <div class="chart-wrap"><canvas id="barChart" height="110"></canvas></div>
+    </section>
+
+    <!-- Tab 3 -->
+    <section class="tabpane" id="t3">
+      <h3>全保有銘柄 @ {{ selected_q }}</h3>
+      <table>
+        <thead><tr><th>Ticker</th><th>Issuer</th><th>CUSIP</th><th class="num">Value</th><th class="num">% of Port</th></tr></thead>
+        <tbody>
+          {% for r in full_table %}
+            <tr><td>{{ r.ticker }}</td><td>{{ r.issuer }}</td><td>{{ r.cusip }}</td><td class="num">{{ r.value_disp }}</td><td class="num">{{ r.pct }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <a class="btn" href="{% url 'tracker:export_csv' %}?fund={{ selected_fund|urlencode }}&q={{ selected_q }}&top_n={{ top_n }}">📥 CSV ダウンロード</a>
+    </section>
+
+    <footer>
+      Source: SEC EDGAR 13F-HR | Note: 13Fはロング側のみで、ショート/スワップ/海外株は含まれません | 45日ラグあり
+    </footer>
+  </main>
+</div>
+
+{{ pie_labels|json_script:"pie-labels" }}
+{{ pie_values|json_script:"pie-values" }}
+{{ quarter_labels|json_script:"quarter-labels" }}
+{{ line_datasets|json_script:"line-datasets" }}
+{{ bar_datasets|json_script:"bar-datasets" }}
+
+<script>
+(function(){
+  // ---- tabs ----
+  const btns = document.querySelectorAll(".tabbtn");
+  const panes = document.querySelectorAll(".tabpane");
+  btns.forEach(b => b.addEventListener("click", () => {
+    btns.forEach(x => x.classList.remove("active"));
+    panes.forEach(p => p.classList.remove("active"));
+    b.classList.add("active");
+    document.getElementById(b.dataset.tab).classList.add("active");
+  }));
+
+  if (typeof Chart === "undefined") return;  // CDN + local both blocked
+
+  const J = id => JSON.parse(document.getElementById(id).textContent);
+  const PALETTE = ["#89b4fa","#a6e3a1","#f38ba8","#f9e2af","#cba6f7","#94e2d5","#fab387","#74c7ec"];
+  Chart.defaults.color = "#a6adc8";
+  Chart.defaults.borderColor = "#3a3a4a";
+
+  // ---- donut (Tab 1) ----
+  new Chart(document.getElementById("pieChart"), {
+    type: "doughnut",
+    data: {
+      labels: J("pie-labels"),
+      datasets: [{ data: J("pie-values"), backgroundColor: PALETTE, borderWidth: 0 }]
+    },
+    options: {
+      cutout: "40%",
+      plugins: {
+        title: { display: true, text: "Top {{ top_n }} Allocation" },
+        legend: { position: "right" }
+      }
+    }
+  });
+
+  // ---- line: value $B (Tab 2) ----
+  const qLabels = J("quarter-labels");
+  const lineSets = J("line-datasets").map((d, i) => ({
+    label: d.label, data: d.data, borderColor: PALETTE[i % PALETTE.length],
+    backgroundColor: PALETTE[i % PALETTE.length], tension: .25, spanGaps: true
+  }));
+  new Chart(document.getElementById("lineChart"), {
+    type: "line",
+    data: { labels: qLabels, datasets: lineSets },
+    options: {
+      plugins: { title: { display: true, text: "{{ selected_fund|escapejs }}: Top 5 Holdings Value Trend ($B)" } },
+      scales: { y: { title: { display: true, text: "評価額 ($B)" } },
+                x: { title: { display: true, text: "四半期末" } } }
+    }
+  });
+
+  // ---- grouped bar: % of port (Tab 2) ----
+  const barSets = J("bar-datasets").map((d, i) => ({
+    label: d.label, data: d.data, backgroundColor: PALETTE[i % PALETTE.length]
+  }));
+  new Chart(document.getElementById("barChart"), {
+    type: "bar",
+    data: { labels: qLabels, datasets: barSets },
+    options: { plugins: { title: { display: true, text: "ポートフォリオ比重 (%) 推移" } } }
+  });
+})();
+</script>
+{% endif %}
+</body>
+</html>

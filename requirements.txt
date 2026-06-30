@@ -1,0 +1,20 @@
+# --- Core (required) ---
+Django>=5.0,<7.0
+
+# --- Production serving / deployment (optional but recommended) ---
+# Static file serving without a separate web server (used in settings.py).
+whitenoise>=6.6
+# WSGI server for Azure App Service / production.
+gunicorn>=22.0
+# Parse DATABASE_URL (e.g. PostgreSQL on Azure). Activated only if set.
+dj-database-url>=2.2
+# PostgreSQL driver (only needed when using a Postgres DATABASE_URL).
+psycopg[binary]>=3.2
+# Load a local .env file in development (optional).
+python-dotenv>=1.0
+
+# NOTE:
+# The original Streamlit stack (streamlit, edgartools, plotly, yfinance,
+# rapidfuzz, sqlalchemy) is no longer required. Charts are rendered client
+# side with Chart.js; the ETL/EDGAR ingestion is out of scope for this port
+# and is replaced by the `seed_demo` / `import_cache` management commands.
