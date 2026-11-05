@@ -1,360 +1,360 @@
-<div align="center">
+# 日本株ヘッジファンド保有トラッカー（Japan HF Ownership Tracker）
 
-# 📊 Japan HF Ownership Tracker
+米国 SEC の 13F-HR（機関投資家が四半期ごとに提出する保有銘柄の報告書）のデータを、ファンドごとに KPI カード・表・グラフで可視化する Django 製の Web アプリです。Streamlit で作ったプロトタイプを Django に移植したもので、ヘッジファンドによる日本企業の保有状況を追えるようにすることを目指しています。
 
-**世界の機関投資家による「日本企業の保有状況」を、SEC 13F-HR データから横断的に可視化する Web アプリ**
+[![Python](https://img.shields.io/badge/Python-3.13%20tested-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Django](https://img.shields.io/badge/Django-%3E%3D5.0%2C%20%3C7.0-092E20?logo=django&logoColor=white)](https://www.djangoproject.com/)
+[![Chart.js](https://img.shields.io/badge/Chart.js-4.4.3-FF6384?logo=chartdotjs&logoColor=white)](https://www.chartjs.org/)
+[![Tests](https://img.shields.io/badge/tests-7%20passed-brightgreen)](#テスト)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](#ライセンス)
 
-_Streamlit 製プロトタイプ（`app.py`）を、本番運用を見据えて **Django** へ移植したリファレンス実装_
+> **English summary:** A Django web app that visualizes institutional investors' SEC 13F-HR holdings per fund and quarter: KPI cards, a Top-N table, doughnut / line / bar charts (Chart.js), CSV export and the Django admin. It is a port of a Streamlit prototype. The bundled `seed_demo` command generates **synthetic** demo data for 10 funds × 5 quarters; the app itself does not download data from SEC EDGAR. Extracting Japanese ADRs and EDINET integration are on the roadmap.
 
-[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![Django](https://img.shields.io/badge/Django-5.x-092E20?logo=django&logoColor=white)](https://www.djangoproject.com/)
-[![Chart.js](https://img.shields.io/badge/Chart.js-4.x-FF6384?logo=chartdotjs&logoColor=white)](https://www.chartjs.org/)
-[![Tests](https://img.shields.io/badge/tests-7%20passing-brightgreen)](#-テスト)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<p align="center">
+  <img src="docs/images/dashboard.png" alt="ダッシュボードの Top N タブ。左のサイドバーにファンド・四半期・Top N のフィルタ、右に KPI カードと上位 10 銘柄の表" width="860">
+</p>
+<p align="center"><sub>画面の数値はすべて <code>seed_demo</code> が乱数で生成した架空のデータで、実在するファンドの実際の保有状況ではありません。左下の「DEMO DATA」の注記は撮影時に書き加えたもので、アプリの画面にはありません。</sub></p>
 
-</div>
+## 目次
 
----
+- [主な機能](#主な機能)
+- [クイックスタート](#クイックスタート)
+- [使い方](#使い方)
+- [技術スタック](#技術スタック)
+- [プロジェクト構成](#プロジェクト構成)
+- [設計のポイント](#設計のポイント)
+- [テスト](#テスト)
+- [本番環境で使うとき](#本番環境で使うとき)
+- [ロードマップ](#ロードマップ)
+- [既知の制限](#既知の制限)
+- [データと免責](#データと免責)
+- [ライセンス](#ライセンス)
 
-## 📑 目次
+## 主な機能
 
-1. [プロジェクトの目的](#-プロジェクトの目的)
-2. [スクリーンショット](#-スクリーンショット)
-3. [主な機能](#-主な機能v10-mvp)
-4. [技術スタック](#-技術スタック)
-5. [クイックスタート（3 コマンド）](#-クイックスタート3-コマンド)
-6. [データの投入方法](#-データの投入方法)
-7. [プロジェクト構造](#-プロジェクト構造)
-8. [アーキテクチャ](#-アーキテクチャ)
-9. [Streamlit → Django 移植マッピング](#-streamlit--django-移植マッピング)
-10. [設定（環境変数）](#-設定環境変数)
-11. [テスト](#-テスト)
-12. [本番デプロイ（Azure App Service）](#-本番デプロイazure-app-service)
-13. [Chart.js のローカル配置（社内ネットワーク向け）](#-chartjs-のローカル配置社内ネットワーク向け)
-14. [トラブルシューティング](#-トラブルシューティング)
-15. [ロードマップ](#-ロードマップ)
-16. [ライセンス / 注意事項](#-ライセンス--注意事項)
+| 機能 | 状態 | 内容 |
+| --- | :---: | --- |
+| ファンド別ダッシュボード | ✅ | ファンド・四半期・Top N（5〜30）を選ぶと、KPI カード（ポートフォリオ総額・保有銘柄数・Top 10 集中度）と表・グラフが切り替わります |
+| Top N タブ | ✅ | 保有額の大きい順に上位 N 銘柄の表と、構成比のドーナツグラフを表示します |
+| 推移タブ | ✅ | 選んだ四半期の上位 5 銘柄について、保有額の折れ線グラフと組入比率の棒グラフを四半期ごとに表示します |
+| 全銘柄タブ | ✅ | ティッカー・発行体・CUSIP（米国の証券識別コード）・保有額・組入比率の一覧です |
+| CSV ダウンロード | ✅ | 表示中のファンド × 四半期の全保有銘柄を CSV で保存します |
+| URL で表示を共有 | ✅ | 選択内容が `?fund=...&q=YYYY-MM-DD&top_n=...` の形で URL に入るので、ブックマークや共有ができます |
+| 管理画面 | ✅ | Django admin で保有データを検索・絞り込み・編集できます |
+| データ投入コマンド | ✅ | `seed_demo`（架空のデモデータを生成）と `import_cache`（SQLite の 13F データを取り込み） |
+| 日本 ADR の抽出 | 🚧 | 予定（v1.1）。ADR は米国市場で取引される外国株の預託証券です |
+| 複数ファンドの比較ビュー | 🚧 | 予定（v1.1） |
+| EDINET 連携 | 🚧 | 予定（v1.2）。EDINET は金融庁の電子開示システムです |
 
----
+## クイックスタート
 
-## 🎯 プロジェクトの目的
+前提：Python 3.12 以上と Git（動作確認：Windows 11 / Python 3.13 / Django 6.1.2、2026 年 11 月）。
 
-**「ヘッジファンドが日本株をどれだけ・どう買っているか」** を一元的に可視化できるツールは、
-既存の 13F 追跡サービス（13F.info、WhaleWisdom 等）には存在しません。理由は次の 2 点です。
+### Windows（PowerShell）
 
-- 米国 13F は **米国上場 ADR** しか開示しない
-- 日本の EDINET 大量保有報告書は **日本語のみ** で、海外機関投資家にとって参照しづらい
-
-本プロジェクトは将来的に **両ソースを統合** し、英語 UI で日本株オーナーシップを可視化する
-**未充足のニッチ** を狙います。本リポジトリはその第一歩として、SEC 13F-HR データを
-Django 上で可視化する MVP です。
-
----
-
-## 📸 スクリーンショット
-
-> 実画面のキャプチャは後日追加します。下記は画面構成の概要です。
-
-```
-┌──────────────┬────────────────────────────────────────────────┐
-│  🔎 フィルタ   │  📊 Japan Hedge Fund Ownership Tracker          │
-│              │                                                │
-│  ファンド ▼   │  ┌─────────┐ ┌─────────┐ ┌─────────┐           │
-│  四半期   ▼   │  │ 総額     │ │ 銘柄数   │ │Top10集中 │ ← KPI    │
-│  Top N  ──●─ │  │ $128.4B │ │   12    │ │ 73.2 %  │           │
-│              │  └─────────┘ └─────────┘ └─────────┘           │
-│  登録ファンド  │  ┌ 📋 Top N ┬ 📈 推移 ┬ 🔍 全銘柄 ┐ ← タブ    │
-│  総レコード数  │  │ 上位テーブル + ドーナツ / 折れ線 + 棒 / 全件表 │
-│  カバー期間   │  │                            [📥 CSV]        │
-└──────────────┴────────────────────────────────────────────────┘
-```
-
----
-
-## ✨ 主な機能（v1.0 MVP）
-
-| 機能 | 状態 | 説明 |
-|------|:----:|------|
-| 主要 HF 13F-HR の可視化 | ✅ | Berkshire / Pershing Square / Bridgewater 等 10 ファンド |
-| ファンド別ビュー | ✅ | Top N 保有銘柄・四半期推移・比重 |
-| ポートフォリオ可視化 | ✅ | ドーナツ / 折れ線 / グループ棒（Chart.js） |
-| KPI ダッシュボード | ✅ | 総額・保有銘柄数・Top 10 集中度 |
-| CSV エクスポート | ✅ | 選択中ファンド × 四半期の全保有をダウンロード |
-| SQLite キャッシュ取込 | ✅ | 既存 `data/cache.db` をそのまま import 可能 |
-| Django Admin | ✅ | 保有データの検索・絞り込み・編集 |
-| 自動テスト | ✅ | 7 ケース（フィルタ・クランプ・CSV 等） |
-| 日本 ADR 抽出 | 🚧 | v1.1 で実装予定 |
-| EDINET 連携（東証直接保有） | 🚧 | v1.2 で実装予定 |
-| 複数ファンド比較ビュー | 🚧 | v1.1 で実装予定 |
-
----
-
-## 🛠 技術スタック
-
-| カテゴリ | 採用技術 | 理由 |
-|----------|----------|------|
-| 言語 | Python 3.11+ | データ処理・型ヒント |
-| Web フレームワーク | **Django 5.x** | 認証・ORM・Admin・本番運用が標準装備 |
-| データソース | SEC EDGAR API（取込済データを利用） | 公式・無料・商用可 |
-| 可視化 | **Chart.js 4.x** | クライアント描画でサーバ依存を削減 |
-| 永続化 | SQLite（既定） / PostgreSQL（任意） | 開発はサーバ不要、本番は `DATABASE_URL` で切替 |
-| 静的配信 | WhiteNoise | 別途 Web サーバ不要で本番配信 |
-| 本番サーバ | Gunicorn | Azure App Service で標準的 |
-
-> **移植時の設計判断**：オリジナルの Streamlit / Plotly / pandas 依存は実行時から外し、
-> 集計は Django ORM、描画は Chart.js に統一しました。これにより依存が軽量化し、
-> Azure などへの配置が容易になります。
-
----
-
-## 🚀 クイックスタート（3 コマンド）
-
-> 前提：Python 3.11 以上がインストール済み。
-
-```bash
-# 0) 仮想環境（推奨）
-py -m venv .venv
-.\.venv\Scripts\Activate.ps1          # Windows PowerShell
-# source .venv/bin/activate           # macOS / Linux
-
-# 1) 依存をインストール
+```powershell
+git clone https://github.com/rebelnaoto7/japan_hf_tracker.git
+cd japan_hf_tracker
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-
-# 2) DB 作成（マイグレーション）＆デモデータ投入
 python manage.py migrate
 python manage.py seed_demo
-
-# 3) 起動
 python manage.py runserver
 ```
 
-ブラウザで <http://127.0.0.1:8000/> を開きます。
-管理画面は `/admin/`（`python manage.py createsuperuser` で管理者を作成）。
-
----
-
-## 📥 データの投入方法
-
-本アプリは 2 通りのデータ投入をサポートします。
-
-### A. デモデータ（すぐ試す）
+### macOS / Linux
 
 ```bash
-python manage.py seed_demo            # 10 ファンド × 5 四半期の擬似データ
-python manage.py seed_demo --clear    # 既存を消してから投入
-python manage.py seed_demo --seed 7   # 乱数シードを指定（再現性）
+git clone https://github.com/rebelnaoto7/japan_hf_tracker.git
+cd japan_hf_tracker
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python manage.py migrate
+python manage.py seed_demo
+python manage.py runserver
 ```
 
-### B. 既存の Streamlit キャッシュを取り込む
+ブラウザで <http://127.0.0.1:8000/> を開くと、ダッシュボードが表示されます。`seed_demo` を実行していない場合は「データがありません」という案内が表示されます。
 
-オリジナル `app.py` が生成した `data/cache.db`（テーブル `holdings_13f`）をそのまま取込可能です。
+管理画面（<http://127.0.0.1:8000/admin/>）を使うときは、先に管理者ユーザーを作成します。
 
 ```bash
-python manage.py import_cache                      # 既定: ./data/cache.db
-python manage.py import_cache --path C:\path\cache.db
-python manage.py import_cache --clear              # 取込前に全削除
+python manage.py createsuperuser
 ```
 
-> 取込元テーブルは
-> `fund_name, period_end, ticker, issuer, cusip, value_usd, pct_of_port`
-> の列を想定しています（余分な列は無視）。
+グラフを描く Chart.js は CDN（jsDelivr）から読み込みます。インターネットに接続できない環境では、KPI と表は表示されますが、グラフは表示されません（[既知の制限](#既知の制限)）。
 
----
+### うまく動かないとき
 
-## 📁 プロジェクト構造
+| 症状 | 対処 |
+| --- | --- |
+| `Activate.ps1` が実行ポリシーで止められる | そのウィンドウだけ許可します：`Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` |
+| `can't open file 'manage.py'` | `manage.py` があるリポジトリ直下に `cd` してから実行します |
+| 画面に「データがありません」と出る | `python manage.py seed_demo` を実行します |
+| 2 回目の `seed_demo` が `IntegrityError` で止まる | 同じデータがすでにあるためです。`python manage.py seed_demo --clear` で入れ直します |
+| グラフだけが表示されない | jsDelivr（`cdn.jsdelivr.net`）に接続できるか確認します |
 
+## 使い方
+
+### 画面の見方
+
+1. 左のサイドバーで **ヘッジファンド** と **四半期** を選び、**Top N 表示** のスライダーで表に出す銘柄数（5〜30）を決めます。選ぶとすぐにページが更新されます。
+2. 上部の KPI カードに、選んだ四半期のポートフォリオ総額・保有銘柄数・Top 10 集中度（上位 10 銘柄の組入比率の合計）が表示されます。
+3. タブで表示を切り替えます。
+   - **Top N**：上位 N 銘柄の表と、その構成比のドーナツグラフ（表の下）
+   - **推移**：上位 5 銘柄の保有額（折れ線）と組入比率（棒）の四半期推移
+   - **全銘柄**：全保有銘柄の一覧と **CSV ダウンロード** ボタン
+4. サイドバーの下には、登録ファンド数・総レコード数・データの期間が表示されます。
+
+<p align="center">
+  <img src="docs/images/trend.png" alt="推移タブ。上位 5 銘柄の保有額の折れ線グラフと、組入比率の棒グラフ" width="860">
+</p>
+<p align="center">
+  <img src="docs/images/holdings.png" alt="全銘柄タブ。ティッカー・発行体・CUSIP・保有額・組入比率の表と CSV ダウンロードボタン" width="860">
+</p>
+<p align="center"><sub>上：推移タブ　下：全銘柄タブ（どちらも <code>seed_demo</code> の架空データ）</sub></p>
+
+### URL パラメータ
+
+| パラメータ | 例 | 説明 |
+| --- | --- | --- |
+| `fund` | `Pershing Square Capital` | ファンド名。存在しない名前のときは、アルファベット順で最初のファンドになります |
+| `q` | `2024-12-31` | 四半期末日（`YYYY-MM-DD`）。そのファンドにない日付のときは最新の四半期になります |
+| `top_n` | `15` | 5〜30 の範囲に丸めます。数値でないときは 10 になります |
+
+例：<http://127.0.0.1:8000/?fund=Pershing%20Square%20Capital&q=2024-12-31&top_n=15>
+
+CSV は `/export.csv?fund=...&q=...` でも直接ダウンロードできます。ファイル名は `<ファンド名>_<四半期>.csv`（空白は `_`）で、列は `fund_name, period_end, ticker, issuer, cusip, value_usd, pct_of_port` です。
+
+### デモデータを入れる（seed_demo）
+
+```bash
+python manage.py seed_demo                  # 10 ファンド × 5 四半期の架空データ（490 件）
+python manage.py seed_demo --clear          # 既存データをすべて削除してから入れ直す
+python manage.py seed_demo --clear --seed 7 # 乱数のシードを変える（件数も変わります）
 ```
+
+- ファンド名と銘柄名は実在するものを使っていますが、保有額と組入比率は乱数で作った架空の値です（既定のシードは 42 で、毎回同じデータになります）。
+- 銘柄は米国で取引される日本企業 13 社（ADR や店頭取引の銘柄）と、米国株 3 社（AAPL・KO・BAC）です。四半期は 2024-03-31〜2025-03-31 の 5 期です。
+- データがある状態で `--clear` を付けずに実行すると、一意制約違反（`IntegrityError`）で失敗します。この場合、データは変わりません。
+
+### 手持ちの 13F データを取り込む（import_cache）
+
+SQLite ファイルの `holdings_13f` テーブルを取り込みます。
+
+```bash
+python manage.py import_cache                         # 既定：data/cache.db
+python manage.py import_cache --path path/to/cache.db # ファイルを指定
+python manage.py import_cache --clear                 # 取り込む前に既存データをすべて削除
+```
+
+取り込み元のテーブルには、次の 7 列が必要です（ほかの列は無視します）。
+
+| 列 | 内容 |
+| --- | --- |
+| `fund_name` | ファンド名 |
+| `period_end` | 四半期末日（`YYYY-MM-DD`。時刻が付いていても日付部分だけを使います） |
+| `ticker` | ティッカー |
+| `issuer` | 発行体名 |
+| `cusip` | CUSIP |
+| `value_usd` | 保有額（米ドル） |
+| `pct_of_port` | 組入比率（%） |
+
+- 「ファンド・四半期・CUSIP」が同じ行は重複としてスキップします。ただし、完了メッセージの件数にはスキップした行も含まれます。
+- `data/cache.db` は `.gitignore` の対象で、リポジトリには含まれません。
+- 移植元の Streamlit 版では、`services/edgar_client.py`（SEC EDGAR から 13F を取得する旧スクリプト）が `data/cache.db` を作っていました。このスクリプトには `requirements.txt` にないライブラリ（edgartools・pandas）と環境変数 `SEC_USER_AGENT`（SEC へのアクセスに使う連絡先）が必要です。今回の検証では実行していません。
+
+## 技術スタック
+
+| 分類 | 使用技術 |
+| --- | --- |
+| 言語 | Python（3.13 で動作確認） |
+| Web フレームワーク | Django（`>=5.0,<7.0`。6.1.2 で動作確認） |
+| グラフ | Chart.js 4.4.3（jsDelivr の CDN から読み込み） |
+| データベース | SQLite（既定）。`DATABASE_URL` を設定すると PostgreSQL など（dj-database-url・psycopg） |
+| 静的ファイルの配信 | WhiteNoise |
+| 本番用 WSGI サーバー | Gunicorn（Linux・macOS 用） |
+
+`requirements.txt` には python-dotenv も入っていますが、使っているのは旧スクリプト `services/edgar_client.py` だけです。Django の設定（`config/settings.py`）は `.env` を読み込みません。
+
+## プロジェクト構成
+
+```text
 japan_hf_tracker/
-├─ manage.py
-├─ requirements.txt
-├─ .env.example                 # 環境変数テンプレート
-├─ .gitignore                   # db.sqlite3 / .venv / data/cache.db 等を除外
-├─ config/                      # プロジェクト設定
-│  ├─ settings.py               # 環境変数駆動・WhiteNoise・DATABASE_URL 対応
-│  ├─ urls.py
-│  └─ wsgi.py
-└─ tracker/                     # アプリ本体
-   ├─ models.py                 # Holding（db_table="holdings_13f"）
-   ├─ views.py                  # dashboard / export_csv
-   ├─ urls.py                   # "/" と "/export.csv"
-   ├─ admin.py                  # HoldingAdmin（検索・フィルタ）
-   ├─ tests.py                  # 自動テスト 7 件
-   ├─ templates/tracker/
-   │  └─ dashboard.html         # ダークテーマ UI・タブ・Chart.js
-   ├─ static/tracker/js/        # ← chart.umd.min.js をローカル配置する場所
-   └─ management/commands/
-      ├─ seed_demo.py           # デモデータ生成
-      └─ import_cache.py        # 既存 cache.db 取り込み
+├── manage.py
+├── requirements.txt            # Django 版の依存パッケージ
+├── .env.example                # 環境変数の例（Django は .env を自動では読み込みません）
+├── config/                     # Django プロジェクトの設定
+│   ├── settings.py             # 環境変数による設定・WhiteNoise・DATABASE_URL
+│   ├── urls.py                 # /admin/ と tracker アプリの URL
+│   ├── asgi.py
+│   └── wsgi.py
+├── tracker/                    # Django アプリ本体
+│   ├── models.py               # Holding モデル（テーブル名 holdings_13f）
+│   ├── views.py                # dashboard（画面）と export_csv（CSV）
+│   ├── urls.py                 # / と /export.csv
+│   ├── admin.py                # 管理画面の一覧・検索・絞り込み
+│   ├── tests.py                # 自動テスト 7 件
+│   ├── templates/tracker/
+│   │   └── dashboard.html      # 画面（ダークテーマ・タブ・Chart.js）
+│   ├── management/commands/
+│   │   ├── seed_demo.py        # 架空のデモデータを生成
+│   │   └── import_cache.py     # SQLite の holdings_13f を取り込み
+│   └── migrations/
+├── app.py                      # 移植元の Streamlit 版（参考用）
+├── services/
+│   ├── edgar_client.py         # 移植元の SEC EDGAR 取得スクリプト（参考用）
+│   └── __init__.py, db.py, edinet_client.py, merger.py, normalizer.py   # すべて空ファイル
+├── pages/                      # Streamlit のマルチページ用の空ファイル 4 つ
+├── data/
+│   ├── hedge_fund_ciks.csv     # 旧スクリプト用のファンド名と CIK（SEC の登録番号）
+│   └── japan_adr_map.csv       # 空ファイル
+├── tests/
+│   └── test_normalizer.py      # 空ファイル（manage.py test の対象外）
+└── docs/
+    ├── DEVELOPMENT.md          # 開発メモ（構成図・Streamlit 版との対応表）
+    └── images/                 # README のスクリーンショット
 ```
 
----
+- Django 版として動くのは `config/` と `tracker/` です。
+- `app.py` と `services/edgar_client.py` は移植元の Streamlit 版で、参考として残しています。Django 版の `requirements.txt` では動きません（streamlit・pandas・plotly・edgartools などが別途必要です）。
+- 中身が空のファイル（`pages/` の 4 ファイル、`services/` の 5 ファイル、`data/japan_adr_map.csv`、`tests/test_normalizer.py`）は、ロードマップの機能のために用意されたプレースホルダーで、まだ実装はありません。
 
-## 🏗 アーキテクチャ
+## 設計のポイント
 
-```
-        ┌──────────────────────────────────────────────────────┐
-        │                     Browser (UI)                      │
-        │   dashboard.html  +  Chart.js (doughnut/line/bar)     │
-        └───────────────▲───────────────────────┬──────────────┘
-                        │ HTML / json_script     │ GET ?fund&q&top_n
-                        │                         ▼
-        ┌──────────────────────────────────────────────────────┐
-        │                   Django (config)                     │
-        │   urls.py → tracker.views                             │
-        │     • dashboard()   集計・KPI・チャート用データ生成      │
-        │     • export_csv()  CSV ストリーム出力                 │
-        └───────────────▲───────────────────────┬──────────────┘
-                        │ ORM Query              │
-                        ▼                         │
-        ┌──────────────────────────────────────────────────────┐
-        │             Holding model (holdings_13f)              │
-        │        SQLite（既定） / PostgreSQL（DATABASE_URL）       │
-        └──────────────────────────────────────────────────────┘
-                        ▲
-                        │ 投入
-        ┌───────────────┴───────────────┐
-        │ seed_demo  /  import_cache     │
-        └────────────────────────────────┘
-```
+- **既存データとの互換性**：`Holding` モデルは Streamlit 版と同じテーブル名 `holdings_13f` を使います。「ファンド・四半期・CUSIP」の一意制約で重複を防ぎます。
+- **pandas なしで集計**：集計は Django ORM と標準の Python で行うため、実行時に pandas や plotly は不要です。
+- **状態は GET パラメータで持つ**：URL だけで同じ画面を再現できます。不正な値は安全な既定値に戻します（`top_n` は 5〜30 に丸め、存在しないファンドや四半期は既定の選択に戻します）。
+- **グラフのデータは `json_script` で渡す**：Django の `json_script` フィルタでエスケープして埋め込むので、データに含まれる文字列がスクリプトとして実行されません。
+- **日付は文字列にしてから渡す**：ビューで ISO 形式（`YYYY-MM-DD`）の文字列に整形するので、テンプレートの日付表示がタイムゾーン設定に左右されません。
+- **本番設定は環境変数で切り替え**：`DJANGO_DEBUG=False` のときだけ、WhiteNoise の圧縮・マニフェスト付きストレージを使います。
 
-- **集計は ORM + 素の Python**（pandas 非依存）でサーバを軽量化
-- **チャートデータは `json_script` で安全に受け渡し**（XSS 対策）
-- **日付は View 側で文字列整形** → テンプレートの `date` フィルタや TZ 設定差異に非依存
+構成図と Streamlit 版との対応表は [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) にまとめています。
 
----
-
-## 🔁 Streamlit → Django 移植マッピング
-
-| Streamlit（`app.py`） | Django 移植先 | 備考 |
-|------------------------|---------------|------|
-| `sqlite3` + `holdings_13f` テーブル | `tracker.models.Holding`（`db_table="holdings_13f"`） | テーブル名を維持し既存 DB と互換 |
-| `@st.cache_data` で SQL 読込 | Django ORM クエリ（`views.py`） | キャッシュは将来 `cache_page` 等で追加可 |
-| サイドバー `selectbox`（ファンド／四半期） | GET パラメータ `?fund=...&q=YYYY-MM-DD` + `<select>` | URL 共有可能・ブックマーク可 |
-| `slider("Top N", 5, 30, 10)` | GET パラメータ `?top_n=`（5〜30 にクランプ） | 不正値は安全側へ補正 |
-| `st.metric`（総額／銘柄数／集中度） | KPI カード（テンプレート） | 表示計算は View 側 |
-| `st.tabs([...])` | 1 ページ内タブ UI（JS 切替） | リロード不要 |
-| `plotly.express`（pie / line / bar） | **Chart.js**（doughnut / line / grouped bar） | サーバ依存削減 |
-| `st.download_button` で CSV | `/export.csv` ビュー（`export_csv`） | ストリーム出力 |
-| `python services/edgar_client.py` で投入 | `seed_demo` / `import_cache` 管理コマンド | ETL は別フェーズ |
-| `st.stop()`（データ無し時） | 空状態テンプレート（投入案内を表示） | UX を維持 |
-
----
-
-## ⚙ 設定（環境変数）
-
-`config/settings.py` は本番値を環境変数から読み込み、同一コードで開発・本番を切り替えます。
-`.env.example` をコピーして `.env` を作成するか、Azure の App Settings に設定します。
-
-| 変数 | 既定値 | 説明 |
-|------|--------|------|
-| `DJANGO_SECRET_KEY` | （開発用ダミー） | 本番では必ずランダムな長い文字列に変更 |
-| `DJANGO_DEBUG` | `True` | 本番では `False` |
-| `DJANGO_ALLOWED_HOSTS` | `localhost,127.0.0.1` | カンマ区切りホスト名 |
-| `DJANGO_CSRF_TRUSTED_ORIGINS` | （空） | 例：`https://<app>.azurewebsites.net` |
-| `DJANGO_TIME_ZONE` | `Asia/Tokyo` | タイムゾーン |
-| `DJANGO_USE_TZ` | `True` | タイムゾーン対応 |
-| `DATABASE_URL` | （未設定 → SQLite） | 例：`postgres://USER:PASS@HOST:5432/DB` |
-
-> **シークレットキー生成**
-> ```bash
-> python -c "import secrets; print(secrets.token_urlsafe(50))"
-> ```
-
----
-
-## ✅ テスト
+## テスト
 
 ```bash
 python manage.py test
 ```
 
-`tracker/tests.py` に **7 ケース** を実装済みです。
+`tracker/tests.py` の 7 件がすべて成功します（Windows 11 / Python 3.13 / Django 6.1.2）。実行結果の抜粋です。
 
-| # | テスト | 検証内容 |
-|---|--------|----------|
-| 1 | `test_empty_state` | データ無し時に投入案内を表示 |
-| 2 | `test_default_dashboard` | 既定ファンド／最新四半期／Top 10・KPI 計算 |
-| 3 | `test_fund_switch_resets_quarter` | ファンド切替時の四半期再選択 |
-| 4 | `test_top_n_clamped` | `top_n` の 5〜30 クランプと不正値補正 |
-| 5 | `test_invalid_fund_and_quarter_fallback` | 不正パラメータの安全なフォールバック |
-| 6 | `test_trend_alignment` | 推移チャートの四半期整列と欠損ギャップ |
-| 7 | `test_csv_export` | CSV ヘッダ・行数・Content-Type |
+```text
+Found 7 test(s).
+Creating test database for alias 'default'...
+System check identified no issues (0 silenced).
+.......
+----------------------------------------------------------------------
+Ran 7 tests in 0.051s
 
----
+OK
+Destroying test database for alias 'default'...
+```
 
-## ☁ 本番デプロイ（Azure App Service）
+`collectstatic` を実行する前は、WhiteNoise の `UserWarning: No directory at: ...staticfiles` が表示されます。`staticfiles/` フォルダがまだないことを知らせる警告で、テスト結果には影響しません。
+
+| テスト | 確かめていること |
+| --- | --- |
+| `test_empty_state` | データが 0 件のとき「データがありません」の案内を表示する |
+| `test_default_dashboard` | 既定でアルファベット順の最初のファンドと最新の四半期を選び、KPI と件数を正しく計算する |
+| `test_fund_switch_resets_quarter` | ファンドを切り替えると、そのファンドの最新の四半期を選ぶ |
+| `test_top_n_clamped` | `top_n` を 5〜30 に丸め、数値でない値は 10 にする |
+| `test_invalid_fund_and_quarter_fallback` | 存在しないファンドや不正な日付は既定の選択に戻す |
+| `test_trend_alignment` | 推移グラフのデータが、選んだ四半期の上位銘柄を四半期順にそろえている |
+| `test_csv_export` | CSV のヘッダー・行数・Content-Type |
+
+## 本番環境で使うとき
+
+`config/settings.py` は、次の環境変数を読み込みます。Django は `.env` ファイルを自動では読み込まないので、シェルやホスティング先の設定で環境変数として渡してください。
+
+| 環境変数 | 既定値 | 説明 |
+| --- | --- | --- |
+| `DJANGO_SECRET_KEY` | 開発用の固定値 | 本番では必ず長いランダムな値にします |
+| `DJANGO_DEBUG` | `True` | 本番では `False`。文字列が `True` のときだけデバッグモードになります |
+| `DJANGO_ALLOWED_HOSTS` | `localhost,127.0.0.1` | 公開するホスト名（カンマ区切り） |
+| `DJANGO_CSRF_TRUSTED_ORIGINS` | （空） | HTTPS で公開するときのオリジン（例：`https://example.com`） |
+| `DJANGO_TIME_ZONE` | `Asia/Tokyo` | タイムゾーン |
+| `DJANGO_USE_TZ` | `True` | タイムゾーン対応の有無 |
+| `DATABASE_URL` | （未設定なら SQLite） | 例：`postgres://USER:PASSWORD@HOST:5432/DBNAME` |
+
+SECRET_KEY は次のコマンドで作れます。
 
 ```bash
-# App Settings（環境変数）例
-DJANGO_DEBUG=False
-DJANGO_SECRET_KEY=<ランダムな十分長い文字列>
-DJANGO_ALLOWED_HOSTS=<your-app>.azurewebsites.net
-DJANGO_CSRF_TRUSTED_ORIGINS=https://<your-app>.azurewebsites.net
-# 管理 DB を使う場合のみ
-DATABASE_URL=postgres://USER:PASS@HOST:5432/DBNAME
+python -c "import secrets; print(secrets.token_urlsafe(50))"
+```
+
+### 1. Chart.js をローカルに置く（DEBUG=False では必須）
+
+テンプレートは `{% static 'tracker/js/chart.umd.min.js' %}` を参照していますが、このファイルはリポジトリに含まれていません。`DEBUG=False` で使うマニフェスト付きストレージは参照先のファイルがないとエラーにするため、**このまま `DEBUG=False` で起動すると、ダッシュボード（`/`）が 500 エラーになります**（管理画面と CSV ダウンロードは動きます）。また、`chart.umd.min.js` の末尾にはソースマップ `chart.umd.js.map` への参照があり、`collectstatic` はこのファイルもないと失敗します。そのため、2 つのファイルを置きます。
+
+```powershell
+# Windows（PowerShell）
+New-Item -ItemType Directory -Force tracker\static\tracker\js | Out-Null
+curl.exe -fsSL -o tracker\static\tracker\js\chart.umd.min.js https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js
+curl.exe -fsSL -o tracker\static\tracker\js\chart.umd.js.map https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.js.map
 ```
 
 ```bash
-# 起動前コマンド（リリース時）
+# macOS / Linux
+mkdir -p tracker/static/tracker/js
+curl -fsSL -o tracker/static/tracker/js/chart.umd.min.js https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js
+curl -fsSL -o tracker/static/tracker/js/chart.umd.js.map https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.js.map
+```
+
+### 2. 環境変数を設定して起動する
+
+Linux サーバーでの例です。
+
+```bash
+export DJANGO_DEBUG=False
+export DJANGO_SECRET_KEY="（上のコマンドで作った値）"
+export DJANGO_ALLOWED_HOSTS=example.com
+export DJANGO_CSRF_TRUSTED_ORIGINS=https://example.com
+export DATABASE_URL=postgres://USER:PASSWORD@HOST:5432/DBNAME   # PostgreSQL を使う場合だけ
+
 python manage.py migrate
 python manage.py collectstatic --noinput
-
-# 起動コマンド
 gunicorn config.wsgi:application
 ```
 
-- `whitenoise` が静的ファイルを配信するため、別途 Web サーバは不要です。
-- `DATABASE_URL` を設定すると `dj-database-url` 経由で **PostgreSQL** に切り替わります（未設定なら SQLite）。
-- 短時間のデモ用途であれば SQLite のまま `seed_demo` で投入しても動作します。
+手元の Windows で `DEBUG=False` の動きを確かめるときは、次のようにします（静的ファイルは WhiteNoise が配信します）。
 
----
-
-## 🌐 Chart.js のローカル配置（社内ネットワーク向け）
-
-既定では CDN（jsDelivr）から Chart.js を読み込みますが、**CDN がブロックされる環境**では
-テンプレートの `onerror` フォールバックでローカル版を自動利用します。
-
-```text
-1) chart.umd.min.js を入手し、次へ配置
-   tracker/static/tracker/js/chart.umd.min.js
-2) 本番では collectstatic を実行
-   python manage.py collectstatic --noinput
+```powershell
+$env:DJANGO_DEBUG = "False"
+$env:DJANGO_SECRET_KEY = python -c "import secrets; print(secrets.token_urlsafe(50))"
+python manage.py collectstatic --noinput
+python manage.py runserver
 ```
 
-これで CDN 不通時にもチャートが描画されます。
+### 3. 公開前に確認すること
 
----
+- `python manage.py check --deploy` を実行すると、HSTS・HTTPS へのリダイレクト・Cookie の `Secure` 属性についての警告（`security.W004`・`W008`・`W012`・`W016`）が出ます。`settings.py` にはこれらを切り替える設定がないため、HTTPS で公開するときは設定の追加を検討してください。
+- ダッシュボードにはログイン機能がなく、URL を知っていればだれでも閲覧できます（管理画面だけがログイン必須です）。
+- Gunicorn は Linux・macOS 用で、Windows では動きません。この README の検証は Windows で行ったため、Gunicorn での起動と PostgreSQL への接続は確認していません。
 
-## 🧰 トラブルシューティング
+## ロードマップ
 
-| 症状 | 原因 | 対処 |
-|------|------|------|
-| `Activate.ps1 が認識されません` | `.venv` 未作成 or 場所違い | `py -m venv .venv` を実行／`manage.py` のある階層へ `cd` |
-| `can't open file 'manage.py'` | カレントディレクトリが違う | `Get-ChildItem -Recurse -Filter manage.py` で場所を確認し移動 |
-| `Activate.ps1` が実行ポリシーで拒否 | PowerShell の制限 | `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` |
-| グラフが表示されない | CDN がブロック | [Chart.js のローカル配置](#-chartjs-のローカル配置社内ネットワーク向け) を実施 |
-| `データがありません` 表示 | データ未投入 | `python manage.py seed_demo` または `import_cache` |
-| 本番で静的ファイルが出ない | collectstatic 未実行 | `python manage.py collectstatic --noinput` |
+- **v1.1**：複数ファンドの比較ビュー、日本 ADR の抽出、公開手順の整備
+- **v1.2**：EDINET API v2 との連携（東証での直接保有の取り込み）、英語・日本語の銘柄名の正規化
+- **その後**：四半期ごとの差分のハイライト、ファンド横断の集中度分析、保有変化のアラート
 
----
+## 既知の制限
 
-## 🗺 ロードマップ
+- **CDN に接続できないとグラフが出ない**：テンプレートには、CDN から読み込めなかったときにローカルの Chart.js へ切り替える `onerror` 処理があります。しかしブラウザは、読み込みに失敗した `<script>` の `src` を書き換えても読み込み直さないため、実際には切り替わりません（Chromium 系のブラウザで確認）。オフラインで使うときは、[本番環境で使うとき](#本番環境で使うとき)の手順でファイルを置いたうえで、`dashboard.html` の `<script>` の `src` を `{% static 'tracker/js/chart.umd.min.js' %}` に書き換える必要があります。
+- **実データの取得は含まれない**：Django 版には SEC EDGAR からデータを取得する機能がありません。実データを使うには、別途用意した `holdings_13f` テーブルを `import_cache` で取り込みます。
+- **デモデータは架空**：`seed_demo` のデータは乱数で作ったもので、分析には使えません。
+- **プレースホルダー**：中身が空のファイルが残っています（[プロジェクト構成](#プロジェクト構成)を参照）。
 
-- **v1.1**：複数ファンド比較ビュー、日本 ADR 抽出、Streamlit Cloud 相当の公開手順
-- **v1.2**：EDINET API v2 連携（東証直接保有の取込）、英語／日本語の銘柄名正規化
-- **将来**：四半期差分の自動ハイライト、ファンド横断の集中度分析、保有変化アラート
+## データと免責
 
----
+- 想定しているデータの出典は、米国 SEC の EDGAR で公開されている Form 13F-HR です。アプリの画面の下部にも、出典と注意書きを表示しています。
+- 13F で開示されるのは、米国で取引される対象証券（米国株や ADR など）のロング（買い）ポジションです。空売り（ショート）やスワップ、日本の取引所で直接保有している株式は含まれません。
+- 13F-HR は四半期末から 45 日以内に提出されるため、内容は最新の保有状況ではありません。
+- `seed_demo` のデータは、実在するファンド名・銘柄名に乱数の値を組み合わせた架空のデータです。実際の保有状況を表すものではありません。
+- このアプリは学習・研究用です。投資助言ではありません。投資判断はご自身の責任で行ってください。
 
-## 📄 ライセンス / 注意事項
+## ライセンス
 
-- ライセンス：**MIT**
-- データ表記：`Source: SEC EDGAR 13F-HR`
-- **重要**：13F はロング側のみの開示で、ショート／スワップ／海外株は含まれません。
-  また提出には **約 45 日のラグ** があります。投資判断の唯一の根拠としないでください。
-
----
-
-<div align="center">
-<sub>Built with Django · Visualized with Chart.js · Ported from a Streamlit MVP</sub>
-</div>
+MIT License
